@@ -197,7 +197,7 @@ function encode(obj) {
   return n.toString(36);
 }
 function decode(code) {
-  code = code.trim().toLowerCase().replace(/^.*#/, "").replace(/[^0-9a-z]/g, "");
+  code = ((code.toLowerCase().match(/[0-9a-z]{20,}/g) || []).pop() || "");
   if (!code) throw new Error("empty");
   let n = 0n;
   for (const c of code) n = n * 36n + BigInt(parseInt(c, 36));
