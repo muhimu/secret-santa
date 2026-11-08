@@ -90,6 +90,9 @@ hr { border: 0; border-top: 1.5px dashed var(--line); margin: 4px 0; width: 100%
   box-shadow: 0 14px 40px -24px rgba(18, 53, 43, .45);
 }
 .target { font-family: var(--font-display); font-weight: 800; font-size: clamp(2.4rem, 11vw, 4rem); line-height: 1; color: var(--accent); overflow-wrap: anywhere; }
+.wish { display: grid; gap: 6px; width: 100%; padding-top: 14px; border-top: 1.5px dashed var(--line); }
+.wish-label { text-transform: uppercase; letter-spacing: .12em; font-size: .75rem; font-weight: 700; color: var(--gold); }
+.wish-text { white-space: pre-wrap; overflow-wrap: anywhere; }
 .note { border-left: 3px solid var(--gold); padding-left: 12px; white-space: pre-wrap; }
 @media (prefers-reduced-motion: no-preference) {
   .pop { animation: pop .5s cubic-bezier(.2, 1.4, .4, 1); }
@@ -161,10 +164,14 @@ hr { border: 0; border-top: 1.5px dashed var(--line); margin: 4px 0; width: 100%
   <div class="envelope" id="envelope">
     <p id="envText">Kliknij, żeby zobaczyć, komu robisz prezent. Upewnij się, że nikt nie patrzy na ekran.</p>
     <button class="primary big" id="showBtn">Pokaż wynik</button>
-    <div id="outcome" hidden style="display:grid;gap:14px">
+    <div id="outcome" hidden style="display:grid;gap:14px;width:100%">
       <p class="hint">Robisz prezent dla:</p>
       <p class="target pop" id="target"></p>
       <p class="note" id="noteOut" hidden></p>
+      <div class="wish" id="wish">
+        <span class="wish-label" id="wishLabel">Lista życzeń</span>
+        <p class="wish-text" id="wishText">Wczytuję…</p>
+      </div>
     </div>
   </div>
   <section id="codeSec">
@@ -312,6 +319,37 @@ $("drawBtn").onclick = () => {
 $("haveCode").onclick = () => { $("setup").hidden = true; $("reveal").hidden = false; $("envelope").hidden = true; $("codeInput").focus(); };
 $("resetBtn").onclick = () => { clearResults(); $("drawBtn").focus(); };
 
+/* --- wishes: Google Form responses published as CSV (time, name, wish); latest row per name wins --- */
+const WISHES_CSV = "https://docs.google.com/spreadsheets/d/e/2PACX-1vSUwjov9EgN_6C55GmbArEOiQeftjn8yRy3GbyuY-kJdARCIwBxQduJSO8X-VzqlSB3gvYNZ1EkYVKQ/pub?output=csv";
+function parseCsv(text) {
+  const rows = []; let row = [], f = "", q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) { if (c === '"') { if (text[i + 1] === '"') { f += '"'; i++; } else q = false; } else f += c; }
+    else if (c === '"') q = true;
+    else if (c === ",") { row.push(f); f = ""; }
+    else if (c === "\n" || c === "\r") { if (c === "\r" && text[i + 1] === "\n") i++; row.push(f); rows.push(row); row = []; f = ""; }
+    else f += c;
+  }
+  if (f || row.length) { row.push(f); rows.push(row); }
+  return rows;
+}
+async function showWish(name) {
+  $("wishLabel").textContent = "Lista życzeń: " + name;
+  $("wishText").textContent = "Wczytuję…";
+  try {
+    const res = await fetch(WISHES_CSV);
+    if (!res.ok) throw new Error(res.status);
+    let wish = "";
+    for (const [, who, w] of parseCsv(await res.text()).slice(1)) {
+      if ((who || "").trim().toLowerCase() === name.trim().toLowerCase() && (w || "").trim()) wish = w.trim();
+    }
+    $("wishText").textContent = wish || name + " nie dodał(a) jeszcze życzeń. Zajrzyj tu później.";
+  } catch (e) {
+    $("wishText").textContent = "Nie udało się wczytać listy życzeń. Odśwież stronę za chwilę.";
+  }
+}
+
 /* --- reveal view --- */
 function openReveal(code) {
   let data;
@@ -322,7 +360,7 @@ function openReveal(code) {
   $("target").textContent = data.r;
   $("noteOut").textContent = data.n || ""; $("noteOut").hidden = !data.n;
   $("codeSec").hidden = true;
-  $("showBtn").onclick = () => { $("envText").hidden = true; $("showBtn").hidden = true; $("outcome").hidden = false; };
+  $("showBtn").onclick = () => { $("envText").hidden = true; $("showBtn").hidden = true; $("outcome").hidden = false; showWish(data.r); };
   return true;
 }
 $("codeForm").onsubmit = e => {
