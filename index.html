@@ -140,6 +140,8 @@ hr { border: 0; border-top: 1.5px dashed var(--line); margin: 4px 0; width: 100%
     <h2><span class="n">4</span> Lista życzeń <span class="hint">(opcjonalnie)</span></h2>
     <p class="hint">Zrób Formularz Google z pytaniami „Kim jesteś?” (lista imion) i „Co chcesz dostać?”. Podłącz go do arkusza, a w arkuszu wybierz Plik → Udostępnij → Opublikuj w internecie → CSV. Wklej tu ten link. Po odsłonięciu wyniku każdy zobaczy życzenia osoby, którą wylosował.</p>
     <input id="wishCsv" placeholder="https://docs.google.com/spreadsheets/d/e/…/pub?output=csv" autocomplete="off">
+    <p class="hint">Żeby każdy mógł wpisać życzenia od razu pod swoim linkiem, w formularzu kliknij ⋮ → „Uzyskaj link do wstępnie wypełnionego formularza”, wpisz cokolwiek w oba pola, kliknij „Pobierz link” i wklej go tutaj.</p>
+    <input id="wishForm" placeholder="https://docs.google.com/forms/d/e/…/viewform?usp=pp_url&amp;entry.…" autocomplete="off">
     <p class="error" id="wishErr" hidden></p>
   </section>
 
@@ -179,6 +181,15 @@ hr { border: 0; border-top: 1.5px dashed var(--line); margin: 4px 0; width: 100%
         <span class="wish-label" id="wishLabel">Lista życzeń</span>
         <p class="wish-text" id="wishText">Wczytuję…</p>
       </div>
+      <form class="wish" id="mine" hidden>
+        <label class="wish-label" for="mineText">Twoje życzenia</label>
+        <p class="hint">Wpisz, co chcesz dostać. Zobaczy to osoba, która wylosowała Ciebie.</p>
+        <textarea id="mineText" rows="3" maxlength="500" placeholder="np. książka, ciepłe skarpety (rozmiar 42)"></textarea>
+        <div class="row" style="align-items:center">
+          <button class="primary" type="submit" id="mineBtn">Zapisz życzenia</button>
+          <span class="hint" id="mineState" role="status"></span>
+        </div>
+      </form>
     </div>
   </div>
   <section id="codeSec">
@@ -299,17 +310,20 @@ $("note").oninput = () => { state.note = $("note").value; save(); };
 $("pageUrl").oninput = () => { state.url = $("pageUrl").value.trim(); save(); };
 
 $("wishCsv").oninput = () => { state.csv = $("wishCsv").value.trim(); save(); showErr($("wishErr"), ""); clearResults(); };
+$("wishForm").oninput = () => { state.form = $("wishForm").value.trim(); save(); showErr($("wishErr"), ""); clearResults(); };
 
 $("drawBtn").onclick = () => {
   const sheet = sheetKey(state.csv);
   if (sheet === null) return showErr($("wishErr"), "To nie jest link do opublikowanego arkusza. Powinien zaczynać się od https://docs.google.com/spreadsheets/d/e/ i zawierać /pub. Zostaw pole puste, jeśli nie chcesz listy życzeń.");
+  const form = formKey(state.form);
+  if (form === null) return showErr($("wishErr"), "Link do formularza musi być linkiem do wstępnie wypełnionego formularza: zaczyna się od https://docs.google.com/forms/d/e/ i zawiera dwa fragmenty entry. Zostaw pole puste, jeśli nie chcesz wpisywania życzeń pod linkiem.");
   const pairs = draw(state.names);
   if (!pairs) return showErr($("drawErr"), "Przy tych wykluczeniach nie da się nikogo przydzielić każdemu. Usuń któreś wykluczenie i spróbuj ponownie.");
   showErr($("drawErr"), "");
   const base = (state.url || "").replace(/#.*$/, "");
   const ul = $("results"); ul.replaceChildren();
   [...state.names].sort((a, b) => a.localeCompare(b, "pl")).forEach(g => {
-    const code = encode({ g, r: pairs[g], n: state.note || undefined, w: sheet, s: Math.random().toString(36).slice(2, 5) });
+    const code = encode({ g, r: pairs[g], n: state.note || undefined, w: sheet, f: form, s: Math.random().toString(36).slice(2, 5) });
     const msg = "🎅 " + g + ", oto Twoje losowanie Secret Santa!\n" +
       (base ? "Otwórz: " + base + "#" + code + "\nJeśli wynik nie pojawi się od razu, wklej na stronie ten kod:\n" + code
             : "Wklej ten kod na stronie losowania:\n" + code);
@@ -341,6 +355,14 @@ function sheetKey(url) {
   const gid = (url.match(/[?&]gid=(\d+)/) || [])[1];
   return gid ? m[1] + ":" + gid : m[1];
 }
+/* Form for writing wishes from the link: "f": "<formId>:<nameEntry>:<wishEntry>", "" = none; 2026 links use LEGACY_FORM. */
+const LEGACY_FORM = "1FAIpQLSeJXv137dPsVPcOyt9dHaLW0f4ZYok1i7NnM7hQbKkxcM5g5w:87208575:1277534393";
+function formKey(url) {
+  if (!url) return "";
+  const id = (url.match(/docs\.google\.com\/forms\/d\/e\/([A-Za-z0-9_-]+)\//) || [])[1];
+  const entries = [...url.matchAll(/entry\.(\d+)=/g)].map(m => m[1]);
+  return id && entries.length >= 2 ? [id, entries[0], entries[1]].join(":") : null;
+}
 function sheetUrl(w) {
   const [key, gid] = w.split(":");
   return "https://docs.google.com/spreadsheets/d/e/" + key + "/pub?output=csv" + (gid ? "&single=true&gid=" + gid : "");
@@ -358,22 +380,46 @@ function parseCsv(text) {
   if (f || row.length) { row.push(f); rows.push(row); }
   return rows;
 }
-async function showWish(name, w) {
+async function showWishes(data) {
+  const w = data.w === undefined ? LEGACY_SHEET : data.w;
+  const f = data.f === undefined ? LEGACY_FORM : data.f;
+  const name = data.r, me = data.g;
   $("wish").hidden = !w;
+  $("mine").hidden = !f;
+  $("mineState").textContent = "";
+  if (f) $("mine").onsubmit = e => saveWish(e, f, me);
   if (!w) return;
   $("wishLabel").textContent = "Lista życzeń: " + name;
   $("wishText").textContent = "Wczytuję…";
   try {
     const res = await fetch(sheetUrl(w));
     if (!res.ok) throw new Error(res.status);
-    let wish = "";
-    for (const [, who, w] of parseCsv(await res.text()).slice(1)) {
-      if ((who || "").trim().toLowerCase() === name.trim().toLowerCase() && (w || "").trim()) wish = w.trim();
+    const latest = {};
+    for (const [, who, wish] of parseCsv(await res.text()).slice(1)) {
+      if ((wish || "").trim()) latest[(who || "").trim().toLowerCase()] = wish.trim();
     }
-    $("wishText").textContent = wish || name + " nie dodał(a) jeszcze życzeń. Zajrzyj tu później.";
+    $("wishText").textContent = latest[name.toLowerCase()] || name + " nie dodał(a) jeszcze życzeń. Zajrzyj tu później.";
+    if (!$("mineText").value) $("mineText").value = latest[me.toLowerCase()] || "";
   } catch (e) {
     $("wishText").textContent = "Nie udało się wczytać listy życzeń. Odśwież stronę za chwilę.";
   }
+}
+async function saveWish(e, f, me) {
+  e.preventDefault();
+  const text = $("mineText").value.trim();
+  if (!text) return void ($("mineState").textContent = "Wpisz najpierw, co chcesz dostać.");
+  const [id, nameEntry, wishEntry] = f.split(":");
+  $("mineBtn").disabled = true; $("mineState").textContent = "Wysyłam…";
+  try {
+    await fetch("https://docs.google.com/forms/d/e/" + id + "/formResponse", {
+      method: "POST", mode: "no-cors",
+      body: new URLSearchParams({ ["entry." + nameEntry]: me, ["entry." + wishEntry]: text }),
+    });
+    $("mineState").textContent = "Wysłane. Twój Mikołaj zobaczy to w ciągu kilku minut.";
+  } catch (err) {
+    $("mineState").textContent = "Nie udało się wysłać. Sprawdź internet i spróbuj jeszcze raz.";
+  }
+  $("mineBtn").disabled = false;
 }
 
 /* --- reveal view --- */
@@ -386,7 +432,7 @@ function openReveal(code) {
   $("target").textContent = data.r;
   $("noteOut").textContent = data.n || ""; $("noteOut").hidden = !data.n;
   $("codeSec").hidden = true;
-  $("showBtn").onclick = () => { $("envText").hidden = true; $("showBtn").hidden = true; $("outcome").hidden = false; showWish(data.r, data.w === undefined ? LEGACY_SHEET : data.w); };
+  $("showBtn").onclick = () => { $("envText").hidden = true; $("showBtn").hidden = true; $("outcome").hidden = false; showWishes(data); };
   return true;
 }
 $("codeForm").onsubmit = e => {
@@ -397,6 +443,7 @@ $("codeForm").onsubmit = e => {
 load();
 $("note").value = state.note || "";
 $("wishCsv").value = state.csv || "";
+$("wishForm").value = state.form || "";
 const here = location.href.replace(/#.*$/, "");
 if (!state.url && /^https?:/.test(here)) state.url = here;
 $("pageUrl").value = state.url || "";
