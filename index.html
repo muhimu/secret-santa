@@ -1,0 +1,346 @@
+<!doctype html>
+<html lang="pl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Rodzinny Secret Santa</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,500;12..96,800&family=Atkinson+Hyperlegible:wght@400;700&display=swap">
+<style>
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+:root { color-scheme: light; }
+body { margin: 0; }
+/* Layout: one narrow column of numbered steps (a real sequence), result rows below; reveal view is a single "envelope" card. */
+:root {
+  --bg: #eef3f1;
+  --surface: #ffffff;
+  --ink: #12352b;
+  --muted: #557067;
+  --line: #cfdcd7;
+  --accent: #b3263e;
+  --accent-ink: #ffffff;
+  --gold: #a97a14;
+  --ok: #1f7a4d;
+  --font-display: "Bricolage Grotesque", "Avenir Next", system-ui, sans-serif;
+  --font-body: "Atkinson Hyperlegible", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0d1c17; --surface: #152a23; --ink: #e6efeb; --muted: #93aca3; --line: #2a443b;
+  --accent: #e0566c; --accent-ink: #1a0a0d; --gold: #e2b54a; --ok: #5fcf95; color-scheme: dark;
+} }
+:root[data-theme="dark"] {
+  --bg: #0d1c17; --surface: #152a23; --ink: #e6efeb; --muted: #93aca3; --line: #2a443b;
+  --accent: #e0566c; --accent-ink: #1a0a0d; --gold: #e2b54a; --ok: #5fcf95; color-scheme: dark;
+}
+body {
+  background: var(--bg); color: var(--ink); font-family: var(--font-body); font-size: 16px; line-height: 1.5;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
+  padding-block: 32px 64px;
+}
+main { max-width: 620px; margin: 0 auto; display: grid; gap: 28px; }
+h1, h2 { font-family: var(--font-display); text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(2rem, 7vw, 2.9rem); font-weight: 800; line-height: 1.05; letter-spacing: -0.02em; }
+h2 { font-size: 1.2rem; font-weight: 500; display: flex; gap: 10px; align-items: baseline; }
+h2 .n { font-size: .8rem; font-weight: 800; color: var(--accent); letter-spacing: .08em; }
+p { margin: 0; }
+.lead { color: var(--muted); max-width: 52ch; }
+.eyebrow { text-transform: uppercase; letter-spacing: .14em; font-size: .75rem; color: var(--gold); font-weight: 700; }
+header { display: grid; gap: 10px; }
+section { display: grid; gap: 12px; }
+.hint { color: var(--muted); font-size: .9rem; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; }
+.row > input, .row > select { flex: 1 1 140px; min-width: 0; }
+input, select, textarea {
+  font: inherit; color: var(--ink); background: var(--surface); border: 1.5px solid var(--line);
+  border-radius: 10px; padding: 10px 12px;
+}
+input:focus-visible, select:focus-visible, button:focus-visible, textarea:focus-visible { outline: 3px solid var(--gold); outline-offset: 2px; }
+button {
+  font: inherit; font-weight: 700; cursor: pointer; border-radius: 10px; padding: 10px 16px;
+  border: 1.5px solid var(--ink); background: transparent; color: var(--ink);
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+button.big { font-size: 1.1rem; padding: 14px 22px; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.chips li {
+  display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 12px;
+  border: 1.5px solid var(--line); border-radius: 999px; background: var(--surface);
+}
+.chips li button { border: 0; padding: 2px 8px; font-size: 1rem; line-height: 1; color: var(--muted); border-radius: 999px; }
+.chips li button:hover { color: var(--accent); }
+.empty { color: var(--muted); font-style: italic; font-size: .9rem; }
+.error { color: var(--accent); font-weight: 700; }
+.results { display: grid; gap: 8px; list-style: none; margin: 0; padding: 0; }
+.results li {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap;
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 12px; padding: 10px 12px 10px 16px;
+}
+.results li .who { font-weight: 700; min-width: 0; overflow-wrap: anywhere; }
+.results li.sent { border-color: var(--ok); }
+.results li .state { color: var(--ok); font-size: .85rem; font-weight: 700; }
+.results textarea { width: 100%; font-size: .85rem; }
+hr { border: 0; border-top: 1.5px dashed var(--line); margin: 4px 0; width: 100%; }
+
+/* reveal */
+.envelope {
+  background: var(--surface); border: 1.5px solid var(--line); border-radius: 18px;
+  padding: 28px 22px; display: grid; gap: 18px; justify-items: start;
+  box-shadow: 0 14px 40px -24px rgba(18, 53, 43, .45);
+}
+.target { font-family: var(--font-display); font-weight: 800; font-size: clamp(2.4rem, 11vw, 4rem); line-height: 1; color: var(--accent); overflow-wrap: anywhere; }
+.note { border-left: 3px solid var(--gold); padding-left: 12px; white-space: pre-wrap; }
+@media (prefers-reduced-motion: no-preference) {
+  .pop { animation: pop .5s cubic-bezier(.2, 1.4, .4, 1); }
+  @keyframes pop { from { transform: scale(.7); opacity: .2; } to { transform: none; opacity: 1; } }
+}
+</style>
+</head>
+<body>
+
+<main id="setup">
+  <header>
+    <span class="eyebrow">Losowanie na odległość</span>
+    <h1>Rodzinny Secret Santa</h1>
+    <p class="lead">Wpisz uczestników, losuj i wyślij każdemu jego wiadomość. Wyniku nie widzisz nawet Ty, więc też możesz brać udział.</p>
+    <p><button type="button" id="haveCode">Dostałem/am kod, chcę zobaczyć wynik</button></p>
+  </header>
+
+  <section>
+    <h2><span class="n">1</span> Kto bierze udział</h2>
+    <form class="row" id="nameForm">
+      <input id="nameInput" placeholder="Imię, np. Ania" autocomplete="off" maxlength="30">
+      <button type="submit">Dodaj</button>
+    </form>
+    <ul class="chips" id="names"></ul>
+    <p class="error" id="nameErr" hidden></p>
+  </section>
+
+  <section>
+    <h2><span class="n">2</span> Wykluczenia</h2>
+    <p class="hint">Pary, które nie mogą wylosować siebie nawzajem, np. małżonkowie. Działa w obie strony.</p>
+    <form class="row" id="exForm">
+      <select id="exA" aria-label="Pierwsza osoba"></select>
+      <select id="exB" aria-label="Druga osoba"></select>
+      <button type="submit">Wyklucz</button>
+    </form>
+    <ul class="chips" id="excl"></ul>
+  </section>
+
+  <section>
+    <h2><span class="n">3</span> Wiadomość dla wszystkich <span class="hint">(opcjonalnie)</span></h2>
+    <textarea id="note" rows="2" maxlength="140" placeholder="np. Limit 100 zł, wymiana prezentów 24 grudnia"></textarea>
+  </section>
+
+  <section>
+    <h2><span class="n">4</span> Link do tej strony</h2>
+    <p class="hint">Wklej adres, pod którym otwierasz tę stronę. Trafi do wiadomości, żeby każdy mógł odczytać swój wynik.</p>
+    <input id="pageUrl" placeholder="https://…" autocomplete="off">
+  </section>
+
+  <section>
+    <button class="primary big" id="drawBtn">Losuj</button>
+    <p class="error" id="drawErr" hidden></p>
+  </section>
+
+  <section id="resultSec" hidden>
+    <hr>
+    <h2><span class="n">5</span> Wyślij każdemu jego wiadomość</h2>
+    <p class="hint">Skopiuj i wklej na WhatsAppie, Messengerze albo SMS-em. Wiadomość zawiera zaszyfrowany kod, więc nie zdradza wyniku.</p>
+    <ul class="results" id="results"></ul>
+    <button id="resetBtn">Losuj od nowa</button>
+  </section>
+</main>
+
+<main id="reveal" hidden>
+  <header>
+    <span class="eyebrow">Secret Santa</span>
+    <h1 id="hello">Twoje losowanie</h1>
+  </header>
+  <div class="envelope" id="envelope">
+    <p id="envText">Kliknij, żeby zobaczyć, komu robisz prezent. Upewnij się, że nikt nie patrzy na ekran.</p>
+    <button class="primary big" id="showBtn">Pokaż wynik</button>
+    <div id="outcome" hidden style="display:grid;gap:14px">
+      <p class="hint">Robisz prezent dla:</p>
+      <p class="target pop" id="target"></p>
+      <p class="note" id="noteOut" hidden></p>
+    </div>
+  </div>
+  <section id="codeSec">
+    <p class="hint">Masz kod z wiadomości? Wklej go tutaj.</p>
+    <form class="row" id="codeForm">
+      <input id="codeInput" placeholder="Kod z wiadomości" autocomplete="off">
+      <button type="submit">Odczytaj</button>
+    </form>
+    <p class="error" id="codeErr" hidden></p>
+  </section>
+</main>
+
+<script>
+const $ = id => document.getElementById(id);
+const KEY = [83, 97, 110, 116, 97, 50, 48, 50, 54, 33, 107, 111, 116];
+const state = { names: [], excl: [], note: "", url: "" };
+
+function load() {
+  try { Object.assign(state, JSON.parse(localStorage.getItem("ss-state") || "{}")); } catch (e) {}
+}
+function save() {
+  try { localStorage.setItem("ss-state", JSON.stringify(state)); } catch (e) {}
+}
+
+/* --- code: JSON -> UTF-8 -> XOR -> base36 (letters and digits only, safe in a #hash) --- */
+function encode(obj) {
+  const bytes = new TextEncoder().encode(JSON.stringify(obj));
+  let n = 1n;
+  bytes.forEach((b, i) => { n = (n << 8n) | BigInt(b ^ KEY[i % KEY.length]); });
+  return n.toString(36);
+}
+function decode(code) {
+  code = code.trim().toLowerCase().replace(/^.*#/, "").replace(/[^0-9a-z]/g, "");
+  if (!code) throw new Error("empty");
+  let n = 0n;
+  for (const c of code) n = n * 36n + BigInt(parseInt(c, 36));
+  const out = [];
+  while (n > 1n) { out.unshift(Number(n & 255n)); n >>= 8n; }
+  if (n !== 1n) throw new Error("bad");
+  const bytes = out.map((b, i) => b ^ KEY[i % KEY.length]);
+  const obj = JSON.parse(new TextDecoder().decode(new Uint8Array(bytes)));
+  if (!obj.g || !obj.r) throw new Error("bad");
+  return obj;
+}
+
+/* --- draw: randomized backtracking, honours self and mutual exclusions --- */
+function shuffle(a) { for (let i = a.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [a[i], a[j]] = [a[j], a[i]]; } return a; }
+function blocked(a, b) { return a === b || state.excl.some(([x, y]) => (x === a && y === b) || (x === b && y === a)); }
+function draw(names) {
+  const givers = shuffle([...names]), used = new Set(), pairs = {};
+  (function go(i) {
+    if (i === givers.length) return true;
+    for (const r of shuffle([...names])) {
+      if (used.has(r) || blocked(givers[i], r)) continue;
+      used.add(r); pairs[givers[i]] = r;
+      if (go(i + 1)) return true;
+      used.delete(r);
+    }
+    return false;
+  })(0) || (pairs.fail = true);
+  return pairs.fail ? null : pairs;
+}
+
+/* --- setup view --- */
+function chip(label, onRemove, removeLabel) {
+  const li = document.createElement("li");
+  li.append(label);
+  const b = document.createElement("button");
+  b.type = "button"; b.textContent = "×"; b.setAttribute("aria-label", removeLabel); b.onclick = onRemove;
+  li.append(b);
+  return li;
+}
+function renderSetup() {
+  const ul = $("names"); ul.replaceChildren();
+  if (!state.names.length) ul.innerHTML = '<li class="empty" style="border:0;background:none;padding:0">Nikogo jeszcze nie dodano.</li>';
+  state.names.forEach(n => ul.append(chip(n, () => {
+    state.names = state.names.filter(x => x !== n);
+    state.excl = state.excl.filter(p => !p.includes(n));
+    clearResults(); save(); renderSetup();
+  }, "Usuń " + n)));
+
+  for (const sel of [$("exA"), $("exB")]) {
+    const v = sel.value; sel.replaceChildren();
+    state.names.forEach(n => sel.add(new Option(n, n)));
+    if (state.names.includes(v)) sel.value = v;
+  }
+  if ($("exA").value === $("exB").value && state.names.length > 1) $("exB").selectedIndex = ($("exA").selectedIndex + 1) % state.names.length;
+
+  const ex = $("excl"); ex.replaceChildren();
+  if (!state.excl.length) ex.innerHTML = '<li class="empty" style="border:0;background:none;padding:0">Brak wykluczeń.</li>';
+  state.excl.forEach(([a, b]) => ex.append(chip(a + " ⇄ " + b, () => {
+    state.excl = state.excl.filter(p => !(p[0] === a && p[1] === b));
+    clearResults(); save(); renderSetup();
+  }, "Usuń wykluczenie " + a + " i " + b)));
+
+  $("drawBtn").disabled = state.names.length < 3;
+  $("drawBtn").textContent = state.names.length < 3 ? "Dodaj co najmniej 3 osoby" : "Losuj (" + state.names.length + " osób)";
+}
+function showErr(el, msg) { el.textContent = msg; el.hidden = !msg; }
+function clearResults() { $("resultSec").hidden = true; $("results").replaceChildren(); }
+
+$("nameForm").onsubmit = e => {
+  e.preventDefault();
+  const n = $("nameInput").value.trim();
+  if (!n) return;
+  if (state.names.some(x => x.toLowerCase() === n.toLowerCase())) return showErr($("nameErr"), n + " jest już na liście. Dodaj np. inicjał nazwiska, żeby odróżnić.");
+  showErr($("nameErr"), "");
+  state.names.push(n); $("nameInput").value = "";
+  clearResults(); save(); renderSetup(); $("nameInput").focus();
+};
+$("exForm").onsubmit = e => {
+  e.preventDefault();
+  const a = $("exA").value, b = $("exB").value;
+  if (!a || !b || blocked(a, b)) return;
+  state.excl.push([a, b]); clearResults(); save(); renderSetup();
+};
+$("note").oninput = () => { state.note = $("note").value; save(); };
+$("pageUrl").oninput = () => { state.url = $("pageUrl").value.trim(); save(); };
+
+$("drawBtn").onclick = () => {
+  const pairs = draw(state.names);
+  if (!pairs) return showErr($("drawErr"), "Przy tych wykluczeniach nie da się nikogo przydzielić każdemu. Usuń któreś wykluczenie i spróbuj ponownie.");
+  showErr($("drawErr"), "");
+  const base = (state.url || "").replace(/#.*$/, "");
+  const ul = $("results"); ul.replaceChildren();
+  [...state.names].sort((a, b) => a.localeCompare(b, "pl")).forEach(g => {
+    const code = encode({ g, r: pairs[g], n: state.note || undefined, s: Math.random().toString(36).slice(2, 5) });
+    const msg = "🎅 " + g + ", oto Twoje losowanie Secret Santa!\n" +
+      (base ? "Otwórz: " + base + "#" + code + "\nJeśli wynik nie pojawi się od razu, wklej na stronie ten kod:\n" + code
+            : "Wklej ten kod na stronie losowania:\n" + code);
+    const li = document.createElement("li");
+    li.innerHTML = '<span class="who"></span><span class="row" style="align-items:center"><span class="state" hidden>Skopiowano</span><button type="button">Kopiuj wiadomość</button></span><textarea readonly rows="4" hidden></textarea>';
+    li.querySelector(".who").textContent = g;
+    const ta = li.querySelector("textarea"); ta.value = msg;
+    li.querySelector("button").onclick = async () => {
+      try { await navigator.clipboard.writeText(msg); }
+      catch (e) { ta.hidden = false; ta.focus(); ta.select(); }
+      li.classList.add("sent"); li.querySelector(".state").hidden = false;
+    };
+    ul.append(li);
+  });
+  $("resultSec").hidden = false;
+  $("resultSec").scrollIntoView({ behavior: "smooth", block: "start" });
+};
+$("haveCode").onclick = () => { $("setup").hidden = true; $("reveal").hidden = false; $("envelope").hidden = true; $("codeInput").focus(); };
+$("resetBtn").onclick = () => { clearResults(); $("drawBtn").focus(); };
+
+/* --- reveal view --- */
+function openReveal(code) {
+  let data;
+  try { data = decode(code); } catch (e) { return false; }
+  $("setup").hidden = true; $("reveal").hidden = false; $("envelope").hidden = false;
+  $("hello").textContent = "Cześć, " + data.g + "!";
+  $("envText").hidden = false; $("showBtn").hidden = false; $("outcome").hidden = true;
+  $("target").textContent = data.r;
+  $("noteOut").textContent = data.n || ""; $("noteOut").hidden = !data.n;
+  $("codeSec").hidden = true;
+  $("showBtn").onclick = () => { $("envText").hidden = true; $("showBtn").hidden = true; $("outcome").hidden = false; };
+  return true;
+}
+$("codeForm").onsubmit = e => {
+  e.preventDefault();
+  if (!openReveal($("codeInput").value)) showErr($("codeErr"), "Ten kod jest niepełny albo błędny. Skopiuj go z wiadomości jeszcze raz, w całości.");
+};
+
+load();
+$("note").value = state.note || "";
+const here = location.href.replace(/#.*$/, "");
+if (!state.url && /^https?:/.test(here)) state.url = here;
+$("pageUrl").value = state.url || "";
+renderSetup();
+if (location.hash.length > 1 && !openReveal(location.hash.slice(1))) {
+  $("setup").hidden = true; $("reveal").hidden = false;
+  $("envelope").hidden = true;
+  showErr($("codeErr"), "Link jest niepełny. Wklej kod z wiadomości poniżej.");
+}
+</script>
+</body>
+</html>
